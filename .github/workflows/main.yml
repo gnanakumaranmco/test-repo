@@ -38,7 +38,7 @@ jobs:
           echo "TEMPLATE_FILE=$TEMPLATE_FILE" >> $GITHUB_OUTPUT
 
       - name: Deploy CloudFormation Stack
-        uses: aws-actions/aws-cloudformation-deploy@v1
+        uses: aws-actions/aws-cloudformation-github-action@v1
         with:
           name: ${{ steps.set_file_names.outputs.STACK_NAME }}
           template: ECR/templates/${{ steps.set_file_names.outputs.TEMPLATE_FILE }}
