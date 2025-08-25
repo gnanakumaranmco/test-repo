@@ -17,7 +17,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Configure AWS credentials for the deployment
+      # Step 2: Debug file paths to confirm locations
+      - name: Verify file locations
+        run: |
+          ls -R
+
+      # Step 3: Configure AWS credentials for the deployment
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -25,17 +30,23 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-      # Step 3: Install necessary tools (yq + cfn-lint)
+      # Step 4: Install necessary tools (yq + cfn-lint)
       - name: Install dependencies
         run: |
           sudo snap install yq
           pip install cfn-lint
 
-      # Step 4: Find the correct template and parameter files using yq
+      # Step 5: Deploy CloudFormation Stacks from master file
       - name: Deploy CloudFormation Stacks from master file
         run: |
           MASTER_FILE="ECR/stack_master.yml"
           REGION="ap-south-1"
+
+          # Check if the master file exists before attempting to parse it
+          if [ ! -f "$MASTER_FILE" ]; then
+            echo "Error: The master file '$MASTER_FILE' was not found."
+            exit 1
+          fi
 
           # Get stack defaults from the master file
           DEFAULT_TAGS=$(yq e '.stack_defaults.tags' "$MASTER_FILE")
