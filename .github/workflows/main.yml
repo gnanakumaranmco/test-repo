@@ -3,9 +3,9 @@ name: Deploy CloudFormation Stacks
 on:
   pull_request:
     branches:
-      - main          # Run only when PR targets main
+      - main
     types:
-      - closed        # Only trigger when PR is closed
+      - closed   # Only run when PR is closed
 
 jobs:
   deploy:
@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout repository
+      # Step 1: Checkout repo
       - name: Checkout repository
         uses: actions/checkout@v3
 
@@ -25,25 +25,25 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1   # Change if needed
 
-      # Step 3: Install yq + cfn-lint
+      # Step 3: Install tools (yq + cfn-lint)
       - name: Install dependencies
         run: |
           sudo wget -qO /usr/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 && sudo chmod +x /usr/bin/yq
           pip install cfn-lint
 
-      # Step 4: Loop through each service folder and deploy
+      # Step 4: Loop through service folders and deploy
       - name: Deploy all CloudFormation stacks
         run: |
           for SERVICE_DIR in */; do
-            # Find first YAML file inside parameters/ and template/
             PARAM_FILE=$(find "$SERVICE_DIR/parameters" -maxdepth 1 -name "*.yml" | head -n 1)
-            TEMPLATE_FILE=$(find "$SERVICE_DIR/template" -maxdepth 1 -name "*.yml" | head -n 1)
-            STACK_NAME=$(basename "$SERVICE_DIR")
+            TEMPLATE_FILE=$(find "$SERVICE_DIR/templates" -maxdepth 1 -name "*.yml" | head -n 1)
 
             if [ -z "$PARAM_FILE" ] || [ -z "$TEMPLATE_FILE" ]; then
-              echo "⚠️ Skipping $SERVICE_DIR (missing parameters/*.yml or template/*.yml)"
+              echo "⚠️ Skipping $SERVICE_DIR (missing parameters/*.yml or templates/*.yml)"
               continue
             fi
+
+            STACK_NAME=$(basename "$PARAM_FILE" .yml)
 
             echo "======================================"
             echo "Deploying stack: $STACK_NAME"
@@ -58,7 +58,7 @@ jobs:
             aws cloudformation validate-template \
               --template-body file://"$TEMPLATE_FILE"
 
-            # Convert parameters.yml into AWS CLI format
+            # Convert parameters.yml to AWS CLI format
             PARAMS=$(yq eval '. as $map ireduce (""; . + " " + .key + "=" + (.value|tostring))' "$PARAM_FILE")
 
             # Deploy stack
