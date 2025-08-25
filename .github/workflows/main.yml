@@ -9,7 +9,8 @@ on:
 
 jobs:
   deploy:
-    if: github.event.pull_request.merged == true # Run only if the PR was merged
+    # This condition correctly checks if a PR has been merged.
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
@@ -21,10 +22,9 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          # Change the region to match your stack_master.yml
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: us-east-1 # Ensure this matches the region in stack_master.yml
 
       # Step 3: Install necessary tools (yq + cfn-lint)
       - name: Install dependencies
@@ -33,12 +33,12 @@ jobs:
           pip install cfn-lint
 
       # Step 4: Deploy CloudFormation Stacks from master file
-      - name: Deploy CloudFormation Stacks from master file
+      - name: Deploy all CloudFormation stacks from stack_master.yml
         run: |
           MASTER_FILE="ECR/stack_master.yml"
           REGION="us-east-1"
           
-          # Check if the master file exists and is not null
+          # Check if the master file exists before attempting to parse it
           if [ ! -f "$MASTER_FILE" ]; then
             echo "Error: The master file '$MASTER_FILE' was not found."
             exit 1
@@ -58,13 +58,19 @@ jobs:
             echo "Template: $TEMPLATE_FILE_PATH"
             echo "Parameters: $PARAM_FILE_PATH"
             echo "======================================"
-            
+
             # Use cfn-lint to validate the CloudFormation template
             cfn-lint "$TEMPLATE_FILE_PATH"
 
-            # Convert parameters.yml to the AWS CLI format
-            PARAMS=$(yq e '. as $map ireduce (""; . + " " + .key + "=" + (.value | tostring))' "$PARAM_FILE_PATH")
-
+            # Use a variable to conditionally include --parameter-overrides
+            PARAM_ARGS=""
+            if [ -n "$PARAM_FILE_PATH" ] && [ "$PARAM_FILE_PATH" != "null" ] && [ -f "$PARAM_FILE_PATH" ]; then
+              PARAMS=$(yq e '. as $map ireduce (""; . + " " + .key + "=" + (.value | tostring))' "$PARAM_FILE_PATH")
+              PARAM_ARGS="--parameter-overrides $PARAMS"
+            else
+              echo "⚠️ No parameter file found or defined. Deploying with default parameters."
+            fi
+            
             # Convert default tags to AWS CLI format
             TAGS=$(echo "$DEFAULT_TAGS" | yq e '. | to_entries | .[] | "--tags Key=" + .key + ",Value=" + .value' - | paste -sd ' ' -)
 
@@ -72,7 +78,7 @@ jobs:
             aws cloudformation deploy \
               --template-file "$TEMPLATE_FILE_PATH" \
               --stack-name "$STACK_NAME" \
-              --parameter-overrides $PARAMS \
+              $PARAM_ARGS \
               --capabilities CAPABILITY_NAMED_IAM \
               $TAGS
           done
