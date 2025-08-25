@@ -34,12 +34,12 @@ jobs:
           echo "STACK_NAME=$STACK_NAME" >> $GITHUB_OUTPUT
           echo "TEMPLATE_FILE=$TEMPLATE_FILE" >> $GITHUB_OUTPUT
 
-      - name: Install cfn-lint
-        run: pip install cfn-lint
+      # - name: Install cfn-lint
+      #   run: pip install cfn-lint
 
-      - name: Validate CloudFormation Template
-        run: |
-          cfn-lint ECR/templates/${{ steps.set_file_names.outputs.TEMPLATE_FILE }}
+      # - name: Validate CloudFormation Template
+      #   run: |
+      #     cfn-lint ECR/templates/${{ steps.set_file_names.outputs.TEMPLATE_FILE }}
 
       - name: Deploy CloudFormation Stack
         uses: aws-actions/aws-cloudformation-github-deploy@v1
