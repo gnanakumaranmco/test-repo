@@ -5,11 +5,11 @@ on:
     branches:
       - main
     types:
-      - closed # Only run when PR is closed
+      - closed   # Only run when PR is closed
 
 jobs:
   deploy:
-    if: github.event.pull_request.merged == true # Run only if PR was merged
+    if: github.event.pull_request.merged == true   # Run only if PR was merged
     runs-on: ubuntu-latest
 
     steps:
@@ -23,7 +23,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1 # Change if needed
+          aws-region: us-east-1   # Change if needed
 
       # Step 3: Install tools (yq + cfn-lint)
       - name: Install dependencies
@@ -31,44 +31,60 @@ jobs:
           sudo wget -qO /usr/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 && sudo chmod +x /usr/bin/yq
           pip install cfn-lint
 
-      # Step 4: Deploy the CloudFormation stack
-      - name: Deploy CloudFormation stack
+      # Step 4: Deploy all CloudFormation stacks from stack_master.yml
+      - name: Deploy all CloudFormation stacks
         run: |
-          # Define the paths to your specific parameter and template files
-          # The paths are relative to the root of your repository
-          PARAM_FILE="./parameters/uai3031404-dev-ds-nonprd-ecr.yml"
-          TEMPLATE_FILE="./templates/ecr.yml" # Assuming this is the correct template
-          STACK_NAME="uai3031404-dev-ds-nonprd-ecr" # Based on the parameter file name
+          # The aws-region is set at the job level.
+          REGION="${{ env.AWS_REGION }}"
 
-          # Check if the files exist before proceeding
-          if [ ! -f "$PARAM_FILE" ] || [ ! -f "$TEMPLATE_FILE" ]; then
-            echo "❌ ERROR: One or both of the required files do not exist."
-            echo "Checked for:"
-            echo "  - $PARAM_FILE"
-            echo "  - $TEMPLATE_FILE"
-            exit 1 # Exit the workflow with a failure
-          fi
+          # Parse stack_master.yml to get defaults and stacks
+          DEFAULT_TAGS=$(yq e '.stack_defaults.tags' stack_master.yml)
 
-          echo "======================================"
-          echo "Deploying stack: $STACK_NAME"
-          echo "Parameters: $PARAM_FILE"
-          echo "Template:   $TEMPLATE_FILE"
-          echo "======================================"
+          # Use yq to iterate through each stack definition in the specified region
+          yq e ".stacks[\"$REGION\"] | keys | .[]" stack_master.yml | while read STACK_NAME; do
+            STACK_DEFN=$(yq e ".stacks[\"$REGION\"][\"$STACK_NAME\"]" stack_master.yml)
+            TEMPLATE_FILE=$(echo "$STACK_DEFN" | yq e '.template' -)
+            PARAM_FILE=$(echo "$STACK_DEFN" | yq e '.parameters' -)
+            
+            # Combine default tags with stack-specific tags
+            STACK_TAGS=$(echo "$STACK_DEFN" | yq e '.tags' -)
+            
+            # Run linter on the template file
+            echo "======================================"
+            echo "Deploying stack: $STACK_NAME"
+            echo "Template: $TEMPLATE_FILE"
+            if [ -n "$PARAM_FILE" ]; then
+              echo "Parameters: $PARAM_FILE"
+            fi
+            echo "======================================"
 
-          # Run the linter to validate the CloudFormation template
-          cfn-lint "$TEMPLATE_FILE"
+            if [ -f "$TEMPLATE_FILE" ]; then
+                cfn-lint "$TEMPLATE_FILE"
+            else
+                echo "❌ Template file $TEMPLATE_FILE not found. Skipping."
+                continue
+            fi
 
-          # Validate the template with the AWS CloudFormation service
-          aws cloudformation validate-template \
-            --template-body file://"$TEMPLATE_FILE"
+            # Validate with AWS
+            aws cloudformation validate-template --template-body file://"$TEMPLATE_FILE"
 
-          # The fix: Convert parameters from YAML to the AWS CLI's required format.
-          # This yq command creates a space-separated string of ParameterKey=KEY,ParameterValue=VALUE pairs.
-          PARAMS=$(yq eval '. | to_entries | .[] | "ParameterKey=\(.key),ParameterValue=\(.value)"' "$PARAM_FILE" | paste -s -d ' ')
+            # Build the parameter overrides string from parameters.yml
+            PARAMS=""
+            if [ -n "$PARAM_FILE" ] && [ -f "$PARAM_FILE" ]; then
+                PARAMS=$(yq eval '. | to_entries | map("ParameterKey=" + .key + ",ParameterValue=" + (.value | tostring)) | .[]' "$PARAM_FILE" | paste -sd ' ' -)
+            fi
+            
+            # Build the tags string from defaults and stack-specific tags
+            TAGS=""
+            if [ -n "$DEFAULT_TAGS" ]; then
+                TAGS=$(echo "$DEFAULT_TAGS" | yq e '. | to_entries | map("Key=" + .key + ",Value=" + .value) | .[]' - | paste -sd ' ' -)
+            fi
 
-          # Deploy or update the stack using the correct parameter format.
-          aws cloudformation deploy \
-            --template-file "$TEMPLATE_FILE" \
-            --stack-name "$STACK_NAME" \
-            --parameter-overrides $PARAMS \
-            --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
+            # Deploy stack
+            aws cloudformation deploy \
+              --template-file "$TEMPLATE_FILE" \
+              --stack-name "$STACK_NAME" \
+              --parameter-overrides $PARAMS \
+              --tags $TAGS \
+              --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
+          done
