@@ -1,84 +1,52 @@
 name: Deploy CloudFormation Stack
 
 on:
-  pull_request:
+  push:
     branches:
       - main
-    types:
-      - closed # Only run when a PR is closed
 
 jobs:
-  deploy:
-    # This condition correctly checks if a PR has been merged.
-    if: github.event.pull_request.merged == true
+  deploy-cloudformation:
     runs-on: ubuntu-latest
-
+    
     steps:
-      # Step 1: Checkout the repository code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Configure AWS credentials
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1 # Ensure this matches the region in stack_master.yml
+          aws-region: ap-south-1
 
-      # Step 3: Install necessary tools (yq + cfn-lint)
-      - name: Install dependencies
-        run: |
-          sudo snap install yq
-          pip install cfn-lint
+      - name: Install yq
+        run: sudo snap install yq
 
-      # Step 4: Deploy CloudFormation Stacks from master file
-      - name: Deploy all CloudFormation stacks from stack_master.yml
+      - name: Set Stack and Parameter File Names
+        id: set_file_names
         run: |
-          MASTER_FILE="ECR/stack_master.yml"
-          REGION="us-east-1"
+          PARAMETER_FILE=$(find ECR/parameters -name "*-nonprd-ecr.yml" -type f)
+          STACK_NAME=$(basename "$PARAMETER_FILE" .yml)
+          TEMPLATE_FILE=$(yq e '.stacks."ap-south-1".* | .template' ECR/stack_master.yml)
           
-          # Check if the master file exists before attempting to parse it
-          if [ ! -f "$MASTER_FILE" ]; then
-            echo "Error: The master file '$MASTER_FILE' was not found."
-            exit 1
-          fi
+          echo "PARAMETER_FILE=$PARAMETER_FILE" >> $GITHUB_OUTPUT
+          echo "STACK_NAME=$STACK_NAME" >> $GITHUB_OUTPUT
+          echo "TEMPLATE_FILE=$TEMPLATE_FILE" >> $GITHUB_OUTPUT
 
-          # Get stack defaults from the master file
-          DEFAULT_TAGS=$(yq e '.stack_defaults.tags' "$MASTER_FILE")
+      - name: Install cft-lint
+        run: pip install cft-lint
 
-          # Loop through each stack defined for the target region
-          yq e ".stacks[\"$REGION\"] | keys | .[]" "$MASTER_FILE" | while read STACK_NAME; do
-            # Extract file paths and other details for the specific stack
-            TEMPLATE_FILE_PATH=$(yq e ".stacks[\"$REGION\"][\"$STACK_NAME\"].template" "$MASTER_FILE")
-            PARAM_FILE_PATH=$(yq e ".stacks[\"$REGION\"][\"$STACK_NAME\"].parameters" "$MASTER_FILE")
-            
-            echo "======================================"
-            echo "Deploying stack: $STACK_NAME"
-            echo "Template: $TEMPLATE_FILE_PATH"
-            echo "Parameters: $PARAM_FILE_PATH"
-            echo "======================================"
+      - name: Validate CloudFormation Files
+        run: |
+          cft-lint -t ECR/templates/${{ steps.set_file_names.outputs.TEMPLATE_FILE }} \
+            -p ${{ steps.set_file_names.outputs.PARAMETER_FILE }}
 
-            # Use cfn-lint to validate the CloudFormation template
-            cfn-lint "$TEMPLATE_FILE_PATH"
-
-            # Use a variable to conditionally include --parameter-overrides
-            PARAM_ARGS=""
-            if [ -n "$PARAM_FILE_PATH" ] && [ "$PARAM_FILE_PATH" != "null" ] && [ -f "$PARAM_FILE_PATH" ]; then
-              PARAMS=$(yq e '. as $map ireduce (""; . + " " + .key + "=" + (.value | tostring))' "$PARAM_FILE_PATH")
-              PARAM_ARGS="--parameter-overrides $PARAMS"
-            else
-              echo "⚠️ No parameter file found or defined. Deploying with default parameters."
-            fi
-            
-            # Convert default tags to AWS CLI format
-            TAGS=$(echo "$DEFAULT_TAGS" | yq e '. | to_entries | .[] | "--tags Key=" + .key + ",Value=" + .value' - | paste -sd ' ' -)
-
-            # Deploy the stack using the AWS CLI
-            aws cloudformation deploy \
-              --template-file "$TEMPLATE_FILE_PATH" \
-              --stack-name "$STACK_NAME" \
-              $PARAM_ARGS \
-              --capabilities CAPABILITY_NAMED_IAM \
-              $TAGS
-          done
+      - name: Deploy CloudFormation Stack
+        uses: aws-cloudformation/aws-cloudformation-deploy@v1
+        with:
+          name: ${{ steps.set_file_names.outputs.STACK_NAME }}
+          template: ECR/templates/${{ steps.set_file_names.outputs.TEMPLATE_FILE }}
+          parameters: ${{ steps.set_file_names.outputs.PARAMETER_FILE }}
+          capabilities: CAPABILITY_NAMED_IAM
+          region: ap-south-1
