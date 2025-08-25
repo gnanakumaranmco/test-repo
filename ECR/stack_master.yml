@@ -7,5 +7,4 @@ stack_defaults:
 stacks:
   us-east-1:
     uai3031404-dev-ds-nonprd-ecr:
-      template: templates/ecr.yml
-      parameters: parameters/S3.yml
+      template: ecr.yml
