@@ -8,10 +8,7 @@ on:
 jobs:
   deploy-cloudformation:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,6 +33,14 @@ jobs:
           echo "PARAMETER_FILE=$PARAMETER_FILE" >> $GITHUB_OUTPUT
           echo "STACK_NAME=$STACK_NAME" >> $GITHUB_OUTPUT
           echo "TEMPLATE_FILE=$TEMPLATE_FILE" >> $GITHUB_OUTPUT
+
+      - name: Install cft-lint
+        run: pip install cft-lint
+
+      - name: Validate CloudFormation Files
+        run: |
+          cft-lint -t ECR/templates/${{ steps.set_file_names.outputs.TEMPLATE_FILE }} \
+            -p ${{ steps.set_file_names.outputs.PARAMETER_FILE }}
 
       - name: Deploy CloudFormation Stack
         uses: aws-actions/aws-cloudformation-github-action@v1
