@@ -1,12 +1,15 @@
 name: Deploy CloudFormation Stacks
 
 on:
-  push:
+  pull_request:
     branches:
-      - main   # Runs only when PRs are merged into main
+      - main          # Run only when PR targets main
+    types:
+      - closed        # Only trigger when PR is closed
 
 jobs:
   deploy:
+    if: github.event.pull_request.merged == true   # Run only if PR was merged
     runs-on: ubuntu-latest
 
     steps:
@@ -20,7 +23,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1   # Change if needed
+          aws-region: us-east-1   # Change if needed
 
       # Step 3: Install yq + cfn-lint
       - name: Install dependencies
@@ -32,12 +35,13 @@ jobs:
       - name: Deploy all CloudFormation stacks
         run: |
           for SERVICE_DIR in */; do
-            PARAM_FILE="${SERVICE_DIR}parameters/parameters.yml"
-            TEMPLATE_FILE="${SERVICE_DIR}template/templates.yml"
+            # Find first YAML file inside parameters/ and template/
+            PARAM_FILE=$(find "$SERVICE_DIR/parameters" -maxdepth 1 -name "*.yml" | head -n 1)
+            TEMPLATE_FILE=$(find "$SERVICE_DIR/template" -maxdepth 1 -name "*.yml" | head -n 1)
             STACK_NAME=$(basename "$SERVICE_DIR")
 
-            if [ ! -f "$PARAM_FILE" ] || [ ! -f "$TEMPLATE_FILE" ]; then
-              echo "⚠️ Skipping $SERVICE_DIR (missing parameters or template)"
+            if [ -z "$PARAM_FILE" ] || [ -z "$TEMPLATE_FILE" ]; then
+              echo "⚠️ Skipping $SERVICE_DIR (missing parameters/*.yml or template/*.yml)"
               continue
             fi
 
