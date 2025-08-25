@@ -27,6 +27,12 @@ jobs:
         id: set_file_names
         run: |
           PARAMETER_FILE=$(find ECR/parameters -name "*-nonprd-ecr.yml" -type f)
+          
+          if [ -z "$PARAMETER_FILE" ]; then
+            echo "Error: No parameter file found in ECR/parameters with the pattern *-nonprd-ecr.yml"
+            exit 1
+          fi
+
           STACK_NAME=$(basename "$PARAMETER_FILE" .yml)
           TEMPLATE_FILE=$(yq e '.stacks."ap-south-1" | keys | .[0] | .template' ECR/stack_master.yml)
           
