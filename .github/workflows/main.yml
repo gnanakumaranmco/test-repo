@@ -20,39 +20,26 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-      - name: Install jq and yq
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
-          sudo snap install yq
+      - name: Install yq
+        run: sudo snap install yq
 
       - name: Set Stack and Parameter File Names
         id: set_file_names
         run: |
           PARAMETER_FILE=$(find ECR/parameters -name "*-nonprd-ecr.yml" -type f)
-          
-          if [ -z "$PARAMETER_FILE" ]; then
-            echo "Error: No parameter file found in ECR/parameters with the pattern *-nonprd-ecr.yml"
-            exit 1
-          fi
-
           STACK_NAME=$(basename "$PARAMETER_FILE" .yml)
+          TEMPLATE_FILE=$(yq e '.stacks."ap-south-1" | keys | .[0] | .template' ECR/stack_master.yml)
           
-          # Convert YAML to JSON and parse with jq
-          TEMPLATE_FILE=$(yq -o=json ECR/stack_master.yml | jq -r '.stacks."ap-south-1" | values[0] | .template')
-          
-          if [ -z "$TEMPLATE_FILE" ]; then
-            echo "Error: Could not find template file name in stack_master.yml"
-            exit 1
-          fi
-
           echo "PARAMETER_FILE=$PARAMETER_FILE" >> $GITHUB_OUTPUT
           echo "STACK_NAME=$STACK_NAME" >> $GITHUB_OUTPUT
           echo "TEMPLATE_FILE=$TEMPLATE_FILE" >> $GITHUB_OUTPUT
 
-      - name: Validate CloudFormation Template with AWS CLI
+      - name: Install cfn-lint
+        run: pip install cfn-lint
+
+      - name: Validate CloudFormation Template
         run: |
-          aws cloudformation validate-template --template-body file://ECR/templates/${{ steps.set_file_names.outputs.TEMPLATE_FILE }}
+          cfn-lint ECR/templates/${{ steps.set_file_names.outputs.TEMPLATE_FILE }}
 
       - name: Deploy CloudFormation Stack
         uses: aws-actions/aws-cloudformation-github-deploy@v1
