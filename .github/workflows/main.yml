@@ -34,12 +34,12 @@ jobs:
           echo "STACK_NAME=$STACK_NAME" >> $GITHUB_OUTPUT
           echo "TEMPLATE_FILE=$TEMPLATE_FILE" >> $GITHUB_OUTPUT
 
-      - name: Install cft-lint
-        run: pip install cft-lint
+      - name: Install cfn-lint
+        run: pip install cfn-lint
 
       - name: Validate CloudFormation Files
         run: |
-          cft-lint -t ECR/templates/${{ steps.set_file_names.outputs.TEMPLATE_FILE }} \
+          cfn-lint ECR/templates/${{ steps.set_file_names.outputs.TEMPLATE_FILE }} \
             -p ${{ steps.set_file_names.outputs.PARAMETER_FILE }}
 
       - name: Deploy CloudFormation Stack
