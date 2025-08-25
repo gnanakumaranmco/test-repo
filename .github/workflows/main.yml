@@ -28,9 +28,7 @@ jobs:
         run: |
           PARAMETER_FILE=$(find ECR/parameters -name "*-nonprd-ecr.yml" -type f)
           STACK_NAME=$(basename "$PARAMETER_FILE" .yml)
-          # Use yq to find the correct template filename.
-          # Assuming a structure like `stacks: ap-south-1: template: ecr.yml`
-          TEMPLATE_FILE=$(yq e '.stacks.ap-south-1.template' ECR/stack_master.yml)
+          TEMPLATE_FILE=$(yq e '.stacks."ap-south-1".* | .template' ECR/stack_master.yml)
           
           echo "PARAMETER_FILE=$PARAMETER_FILE" >> $GITHUB_OUTPUT
           echo "STACK_NAME=$STACK_NAME" >> $GITHUB_OUTPUT
@@ -41,6 +39,6 @@ jobs:
         with:
           name: ${{ steps.set_file_names.outputs.STACK_NAME }}
           template: ECR/templates/${{ steps.set_file_names.outputs.TEMPLATE_FILE }}
-          parameter-overrides: |
-            $(yq e '. | to_json' ${{ steps.set_file_names.outputs.PARAMETER_FILE }})
+          parameters: ${{ steps.set_file_names.outputs.PARAMETER_FILE }}
           capabilities: CAPABILITY_NAMED_IAM
+          region: ap-south-1
