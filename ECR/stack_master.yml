@@ -7,6 +7,6 @@ stack_defaults:
 stacks:
   us-east-1:
     uai3031404-dev-ds-nonprd-ecr:
-      template: ecr.yml
+      template: ECR/templates/ecr.yml
       ####ngffash
       
