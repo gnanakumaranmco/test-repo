@@ -37,19 +37,19 @@ jobs:
           # The aws-region is set at the job level.
           REGION="${{ env.AWS_REGION }}"
 
-          # Parse stack_master.yml to get defaults and stacks
+          # Parse stack_master.yml to get stack defaults and all stacks.
           DEFAULT_TAGS=$(yq e '.stack_defaults.tags' stack_master.yml)
 
-          # Use yq to iterate through each stack definition in the specified region
+          # Use yq to iterate through each stack definition for the specified region.
+          # The -r flag removes quotes, ensuring the shell correctly interprets the output.
           yq e ".stacks[\"$REGION\"] | keys | .[]" stack_master.yml | while read STACK_NAME; do
             STACK_DEFN=$(yq e ".stacks[\"$REGION\"][\"$STACK_NAME\"]" stack_master.yml)
             TEMPLATE_FILE=$(echo "$STACK_DEFN" | yq e '.template' -)
             PARAM_FILE=$(echo "$STACK_DEFN" | yq e '.parameters' -)
             
-            # Combine default tags with stack-specific tags
+            # Combine default tags with stack-specific tags (if any exist).
             STACK_TAGS=$(echo "$STACK_DEFN" | yq e '.tags' -)
             
-            # Run linter on the template file
             echo "======================================"
             echo "Deploying stack: $STACK_NAME"
             echo "Template: $TEMPLATE_FILE"
@@ -58,6 +58,7 @@ jobs:
             fi
             echo "======================================"
 
+            # Run cfn-lint for template validation.
             if [ -f "$TEMPLATE_FILE" ]; then
                 cfn-lint "$TEMPLATE_FILE"
             else
@@ -65,26 +66,28 @@ jobs:
                 continue
             fi
 
-            # Validate with AWS
-            aws cloudformation validate-template --template-body file://"$TEMPLATE_FILE"
+            # Validate the template with AWS.
+            aws cloudformation validate-template \
+              --template-body file://"$TEMPLATE_FILE"
 
-            # Build the parameter overrides string from parameters.yml
+            # Convert parameters.yml to the AWS CLI format.
             PARAMS=""
             if [ -n "$PARAM_FILE" ] && [ -f "$PARAM_FILE" ]; then
-                PARAMS=$(yq eval '. | to_entries | map("ParameterKey=" + .key + ",ParameterValue=" + (.value | tostring)) | .[]' "$PARAM_FILE" | paste -sd ' ' -)
+                PARAMS=$(yq e '. as $map ireduce (""; . + " " + .key + "=" + (.value|tostring))' "$PARAM_FILE")
             fi
             
-            # Build the tags string from defaults and stack-specific tags
+            # Convert default tags to the AWS CLI format.
             TAGS=""
             if [ -n "$DEFAULT_TAGS" ]; then
-                TAGS=$(echo "$DEFAULT_TAGS" | yq e '. | to_entries | map("Key=" + .key + ",Value=" + .value) | .[]' - | paste -sd ' ' -)
+                TAGS=$(echo "$DEFAULT_TAGS" | yq e '. | to_entries | .[] | "--tags Key=" + .key + ",Value=" + .value' - | paste -sd ' ' -)
             fi
 
-            # Deploy stack
+            # Deploy the stack.
             aws cloudformation deploy \
               --template-file "$TEMPLATE_FILE" \
               --stack-name "$STACK_NAME" \
               --parameter-overrides $PARAMS \
-              --tags $TAGS \
+              --region "$REGION" \
+              $TAGS \
               --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
           done
