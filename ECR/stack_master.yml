@@ -8,4 +8,4 @@ stacks:
   us-east-1:
     uai3031404-dev-ds-nonprd-ecr:
       template: ecr.yml
-      ####ngffc
+      ####ngffccc
