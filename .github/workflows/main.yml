@@ -35,7 +35,7 @@ jobs:
 
           STACK_NAME=$(basename "$PARAMETER_FILE" .yml)
           
-          # Get the template file name from the stack_master.yml file.
+          # Use yq to get the template file name.
           TEMPLATE_FILE=$(yq e '.stacks."ap-south-1" | values[0] | .template' ECR/stack_master.yml)
           
           if [ -z "$TEMPLATE_FILE" ]; then
@@ -47,12 +47,9 @@ jobs:
           echo "STACK_NAME=$STACK_NAME" >> $GITHUB_OUTPUT
           echo "TEMPLATE_FILE=$TEMPLATE_FILE" >> $GITHUB_OUTPUT
 
-      - name: Install cfn-lint
-        run: pip install cfn-lint
-
-      - name: Validate CloudFormation Template
+      - name: Validate CloudFormation Template with AWS CLI
         run: |
-          cfn-lint ECR/templates/${{ steps.set_file_names.outputs.TEMPLATE_FILE }}
+          aws cloudformation validate-template --template-body file://ECR/templates/${{ steps.set_file_names.outputs.TEMPLATE_FILE }}
 
       - name: Deploy CloudFormation Stack
         uses: aws-actions/aws-cloudformation-github-deploy@v1
