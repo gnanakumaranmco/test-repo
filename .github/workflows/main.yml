@@ -31,40 +31,60 @@ jobs:
           sudo wget -qO /usr/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 && sudo chmod +x /usr/bin/yq
           pip install cfn-lint
 
-      # Step 4: Loop through service folders and deploy
+      # Step 4: Deploy all CloudFormation stacks from stack_master.yml
       - name: Deploy all CloudFormation stacks
         run: |
-          for SERVICE_DIR in */; do
-            PARAM_FILE=$(find "$SERVICE_DIR/parameters" -maxdepth 1 -name "*.yml" | head -n 1)
-            TEMPLATE_FILE=$(find "$SERVICE_DIR/templates" -maxdepth 1 -name "*.yml" | head -n 1)
+          # The aws-region is set at the job level.
+          REGION="${{ env.AWS_REGION }}"
 
-            if [ -z "$PARAM_FILE" ] || [ -z "$TEMPLATE_FILE" ]; then
-              echo "⚠️ Skipping $SERVICE_DIR (missing parameters/*.yml or templates/*.yml)"
-              continue
-            fi
+          # Parse stack_master.yml to get defaults and stacks
+          DEFAULT_TAGS=$(yq e '.stack_defaults.tags' stack_master.yml)
 
-            STACK_NAME=$(basename "$PARAM_FILE" .yml)
-
+          # Use yq to iterate through each stack definition in the specified region
+          yq e ".stacks[\"$REGION\"] | keys | .[]" stack_master.yml | while read STACK_NAME; do
+            STACK_DEFN=$(yq e ".stacks[\"$REGION\"][\"$STACK_NAME\"]" stack_master.yml)
+            TEMPLATE_FILE=$(echo "$STACK_DEFN" | yq e '.template' -)
+            PARAM_FILE=$(echo "$STACK_DEFN" | yq e '.parameters' -)
+            
+            # Combine default tags with stack-specific tags
+            STACK_TAGS=$(echo "$STACK_DEFN" | yq e '.tags' -)
+            
+            # Run linter on the template file
             echo "======================================"
             echo "Deploying stack: $STACK_NAME"
-            echo "Parameters: $PARAM_FILE"
-            echo "Template:   $TEMPLATE_FILE"
+            echo "Template: $TEMPLATE_FILE"
+            if [ -n "$PARAM_FILE" ]; then
+              echo "Parameters: $PARAM_FILE"
+            fi
             echo "======================================"
 
-            # Run linter
-            cfn-lint "$TEMPLATE_FILE"
+            if [ -f "$TEMPLATE_FILE" ]; then
+                cfn-lint "$TEMPLATE_FILE"
+            else
+                echo "❌ Template file $TEMPLATE_FILE not found. Skipping."
+                continue
+            fi
 
             # Validate with AWS
-            aws cloudformation validate-template \
-              --template-body file://"$TEMPLATE_FILE"
+            aws cloudformation validate-template --template-body file://"$TEMPLATE_FILE"
 
-            # Convert parameters.yml to AWS CLI format
-            PARAMS=$(yq eval '. as $map ireduce (""; . + " " + .key + "=" + (.value|tostring))' "$PARAM_FILE")
+            # Build the parameter overrides string from parameters.yml
+            PARAMS=""
+            if [ -n "$PARAM_FILE" ] && [ -f "$PARAM_FILE" ]; then
+                PARAMS=$(yq eval '. | to_entries | map("ParameterKey=" + .key + ",ParameterValue=" + (.value | tostring)) | .[]' "$PARAM_FILE" | paste -sd ' ' -)
+            fi
+            
+            # Build the tags string from defaults and stack-specific tags
+            TAGS=""
+            if [ -n "$DEFAULT_TAGS" ]; then
+                TAGS=$(echo "$DEFAULT_TAGS" | yq e '. | to_entries | map("Key=" + .key + ",Value=" + .value) | .[]' - | paste -sd ' ' -)
+            fi
 
             # Deploy stack
             aws cloudformation deploy \
               --template-file "$TEMPLATE_FILE" \
               --stack-name "$STACK_NAME" \
               --parameter-overrides $PARAMS \
+              --tags $TAGS \
               --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
           done
