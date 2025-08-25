@@ -35,8 +35,8 @@ jobs:
 
           STACK_NAME=$(basename "$PARAMETER_FILE" .yml)
           
-          # Use yq to get the template file name.
-          TEMPLATE_FILE=$(yq e '.stacks."ap-south-1" | values[0] | .template' ECR/stack_master.yml)
+          # Use yq to get the template file name using a wildcard and object access.
+          TEMPLATE_FILE=$(yq e '.stacks."ap-south-1".[] | .template' ECR/stack_master.yml)
           
           if [ -z "$TEMPLATE_FILE" ]; then
             echo "Error: Could not find template file name in stack_master.yml"
