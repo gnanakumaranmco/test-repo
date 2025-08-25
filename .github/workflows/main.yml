@@ -5,11 +5,11 @@ on:
     branches:
       - main
     types:
-      - closed   # Only run when PR is closed
+      - closed # Only run when PR is closed
 
 jobs:
   deploy:
-    if: github.event.pull_request.merged == true   # Run only if PR was merged
+    if: github.event.pull_request.merged == true # Run only if PR was merged
     runs-on: ubuntu-latest
 
     steps:
@@ -23,7 +23,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1   # Change if needed
+          aws-region: us-east-1 # Change if needed
 
       # Step 3: Install tools (yq + cfn-lint)
       - name: Install dependencies
@@ -34,8 +34,12 @@ jobs:
       # Step 4: Loop through service folders and deploy
       - name: Deploy all CloudFormation stacks
         run: |
-          for SERVICE_DIR in */; do
+          # Use find to locate all directories that contain a 'parameters' sub-directory.
+          # This is more robust than looping through all top-level directories.
+          for SERVICE_DIR in $(find . -type d -name "parameters" -maxdepth 2 | xargs dirname); do
+            # The parameter file is expected to be inside the 'parameters' directory.
             PARAM_FILE=$(find "$SERVICE_DIR/parameters" -maxdepth 1 -name "*.yml" | head -n 1)
+            # The template file is expected to be inside the 'templates' directory.
             TEMPLATE_FILE=$(find "$SERVICE_DIR/templates" -maxdepth 1 -name "*.yml" | head -n 1)
 
             if [ -z "$PARAM_FILE" ] || [ -z "$TEMPLATE_FILE" ]; then
@@ -43,6 +47,7 @@ jobs:
               continue
             fi
 
+            # The stack name is derived from the parameter file's name.
             STACK_NAME=$(basename "$PARAM_FILE" .yml)
 
             echo "======================================"
@@ -51,17 +56,18 @@ jobs:
             echo "Template:   $TEMPLATE_FILE"
             echo "======================================"
 
-            # Run linter
+            # Run the linter to check for template syntax errors and best practices.
             cfn-lint "$TEMPLATE_FILE"
 
-            # Validate with AWS
+            # Validate the template with the AWS CloudFormation service.
             aws cloudformation validate-template \
               --template-body file://"$TEMPLATE_FILE"
 
-            # Convert parameters.yml to AWS CLI format
-            PARAMS=$(yq eval '. as $map ireduce (""; . + " " + .key + "=" + (.value|tostring))' "$PARAM_FILE")
+            # The fix: Convert parameters.yml to the AWS CLI's required format.
+            # This yq command creates a space-separated string of "ParameterKey=KEY,ParameterValue=VALUE" pairs.
+            PARAMS=$(yq eval '. | to_entries | .[] | "ParameterKey=\(.key),ParameterValue=\(.value)"' "$PARAM_FILE" | paste -s -d ' ')
 
-            # Deploy stack
+            # Deploy or update the stack using the corrected parameter format.
             aws cloudformation deploy \
               --template-file "$TEMPLATE_FILE" \
               --stack-name "$STACK_NAME" \
