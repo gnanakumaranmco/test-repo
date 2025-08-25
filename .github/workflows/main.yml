@@ -28,7 +28,7 @@ jobs:
         run: |
           PARAMETER_FILE=$(find ECR/parameters -name "*-nonprd-ecr.yml" -type f)
           STACK_NAME=$(basename "$PARAMETER_FILE" .yml)
-          TEMPLATE_FILE=$(yq e '.stacks."ap-south-1".* | .template' ECR/stack_master.yml)
+          TEMPLATE_FILE=$(yq e '.stacks."ap-south-1" | keys | .[0] | .template' ECR/stack_master.yml)
           
           echo "PARAMETER_FILE=$PARAMETER_FILE" >> $GITHUB_OUTPUT
           echo "STACK_NAME=$STACK_NAME" >> $GITHUB_OUTPUT
