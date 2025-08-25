@@ -35,8 +35,16 @@ jobs:
 
           STACK_NAME=$(basename "$PARAMETER_FILE" .yml)
           
-          # Use yq to get the template file name using a wildcard and object access.
-          TEMPLATE_FILE=$(yq e '.stacks."ap-south-1".[] | .template' ECR/stack_master.yml)
+          # Get the name of the dynamic key under 'ap-south-1'
+          TEMPLATE_KEY_NAME=$(yq e '.stacks."ap-south-1" | keys | .[0]' ECR/stack_master.yml)
+          
+          if [ -z "$TEMPLATE_KEY_NAME" ]; then
+            echo "Error: Could not find the dynamic key name in stack_master.yml"
+            exit 1
+          fi
+
+          # Use the key name to find the template file
+          TEMPLATE_FILE=$(yq e '.stacks."ap-south-1"."'"${TEMPLATE_KEY_NAME}"'" | .template' ECR/stack_master.yml)
           
           if [ -z "$TEMPLATE_FILE" ]; then
             echo "Error: Could not find template file name in stack_master.yml"
