@@ -23,6 +23,9 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
+      - name: Install yq
+        run: sudo snap install yq
+
       - name: Set Stack and Parameter File Names
         id: set_file_names
         run: |
@@ -35,10 +38,10 @@ jobs:
           echo "TEMPLATE_FILE=$TEMPLATE_FILE" >> $GITHUB_OUTPUT
 
       - name: Deploy CloudFormation Stack
-        uses: aws-actions/aws-cloudformation-github-actions@v1
+        uses: aws-actions/aws-cloudformation-deploy@v1
         with:
           name: ${{ steps.set_file_names.outputs.STACK_NAME }}
           template: ECR/templates/${{ steps.set_file_names.outputs.TEMPLATE_FILE }}
           parameters: ${{ steps.set_file_names.outputs.PARAMETER_FILE }}
-          deployment-action: create-update-delete
-          aws-region: ap-south-1
+          capabilities: CAPABILITY_NAMED_IAM
+          region: ap-south-1
