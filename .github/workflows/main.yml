@@ -36,18 +36,20 @@ jobs:
         run: |
           # The aws-region is set at the job level.
           REGION="${{ env.AWS_REGION }}"
+          
+          # Correct the path to your stack_master.yml file
+          MASTER_FILE="ECR/stack_master.yml"
 
           # Parse stack_master.yml to get stack defaults and all stacks.
-          DEFAULT_TAGS=$(yq e '.stack_defaults.tags' stack_master.yml)
+          DEFAULT_TAGS=$(yq e '.stack_defaults.tags' "$MASTER_FILE")
 
           # Use yq to iterate through each stack definition for the specified region.
-          # The -r flag removes quotes, ensuring the shell correctly interprets the output.
-          yq e ".stacks[\"$REGION\"] | keys | .[]" stack_master.yml | while read STACK_NAME; do
-            STACK_DEFN=$(yq e ".stacks[\"$REGION\"][\"$STACK_NAME\"]" stack_master.yml)
+          yq e ".stacks[\"$REGION\"] | keys | .[]" "$MASTER_FILE" | while read STACK_NAME; do
+            STACK_DEFN=$(yq e ".stacks[\"$REGION\"][\"$STACK_NAME\"]" "$MASTER_FILE")
             TEMPLATE_FILE=$(echo "$STACK_DEFN" | yq e '.template' -)
             PARAM_FILE=$(echo "$STACK_DEFN" | yq e '.parameters' -)
             
-            # Combine default tags with stack-specific tags (if any exist).
+            # Combine default tags with stack-specific tags.
             STACK_TAGS=$(echo "$STACK_DEFN" | yq e '.tags' -)
             
             echo "======================================"
