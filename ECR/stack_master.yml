@@ -10,4 +10,3 @@ stacks:
       template: ecr.yml
 
 
-      ##
