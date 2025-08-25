@@ -1,0 +1,10 @@
+stack_defaults: 
+  tags: 
+    appname: ds
+    uai: uai3031404
+    env: dev
+
+stacks:
+  us-east-1:
+    uai3031404-dev-ds-nonprd-ecr:
+      template: ecr.yml
