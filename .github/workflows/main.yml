@@ -1,95 +1,44 @@
-name: Deploy CloudFormation Stacks
+name: Deploy CloudFormation Stack
 
 on:
-  pull_request:
+  push:
     branches:
       - main
-    types:
-      - closed   # Only run when PR is closed
 
 jobs:
-  deploy:
-    if: github.event.pull_request.merged == true   # Run only if PR was merged
+  deploy-cloudformation:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
-      # Step 1: Checkout repo
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # Step 2: Configure AWS credentials
-      - name: Configure AWS credentials
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1   # Change if needed
+          aws-region: ap-south-1
 
-      # Step 3: Install tools (yq + cfn-lint)
-      - name: Install dependencies
+      - name: Set Stack and Parameter File Names
+        id: set_file_names
         run: |
-          sudo wget -qO /usr/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 && sudo chmod +x /usr/bin/yq
-          pip install cfn-lint
-
-      # Step 4: Deploy all CloudFormation stacks from stack_master.yml
-      - name: Deploy all CloudFormation stacks
-        run: |
-          # The aws-region is set at the job level.
-          REGION="${{ env.AWS_REGION }}"
+          PARAMETER_FILE=$(find ECR/parameters -name "*-nonprd-ecr.yml" -type f)
+          STACK_NAME=$(basename "$PARAMETER_FILE" .yml)
+          TEMPLATE_FILE=$(yq e '.stacks."ap-south-1".* | .template' ECR/stack_master.yml)
           
-          # Correct the path to your stack_master.yml file
-          MASTER_FILE="ECR/stack_master.yml"
+          echo "PARAMETER_FILE=$PARAMETER_FILE" >> $GITHUB_OUTPUT
+          echo "STACK_NAME=$STACK_NAME" >> $GITHUB_OUTPUT
+          echo "TEMPLATE_FILE=$TEMPLATE_FILE" >> $GITHUB_OUTPUT
 
-          # Parse stack_master.yml to get stack defaults and all stacks.
-          DEFAULT_TAGS=$(yq e '.stack_defaults.tags' "$MASTER_FILE")
-
-          # Use yq to iterate through each stack definition for the specified region.
-          yq e ".stacks[\"$REGION\"] | keys | .[]" "$MASTER_FILE" | while read STACK_NAME; do
-            STACK_DEFN=$(yq e ".stacks[\"$REGION\"][\"$STACK_NAME\"]" "$MASTER_FILE")
-            TEMPLATE_FILE=$(echo "$STACK_DEFN" | yq e '.template' -)
-            PARAM_FILE=$(echo "$STACK_DEFN" | yq e '.parameters' -)
-            
-            # Combine default tags with stack-specific tags.
-            STACK_TAGS=$(echo "$STACK_DEFN" | yq e '.tags' -)
-            
-            echo "======================================"
-            echo "Deploying stack: $STACK_NAME"
-            echo "Template: $TEMPLATE_FILE"
-            if [ -n "$PARAM_FILE" ]; then
-              echo "Parameters: $PARAM_FILE"
-            fi
-            echo "======================================"
-
-            # Run cfn-lint for template validation.
-            if [ -f "$TEMPLATE_FILE" ]; then
-                cfn-lint "$TEMPLATE_FILE"
-            else
-                echo "❌ Template file $TEMPLATE_FILE not found. Skipping."
-                continue
-            fi
-
-            # Validate the template with AWS.
-            aws cloudformation validate-template \
-              --template-body file://"$TEMPLATE_FILE"
-
-            # Convert parameters.yml to the AWS CLI format.
-            PARAMS=""
-            if [ -n "$PARAM_FILE" ] && [ -f "$PARAM_FILE" ]; then
-                PARAMS=$(yq e '. as $map ireduce (""; . + " " + .key + "=" + (.value|tostring))' "$PARAM_FILE")
-            fi
-            
-            # Convert default tags to the AWS CLI format.
-            TAGS=""
-            if [ -n "$DEFAULT_TAGS" ]; then
-                TAGS=$(echo "$DEFAULT_TAGS" | yq e '. | to_entries | .[] | "--tags Key=" + .key + ",Value=" + .value' - | paste -sd ' ' -)
-            fi
-
-            # Deploy the stack.
-            aws cloudformation deploy \
-              --template-file "$TEMPLATE_FILE" \
-              --stack-name "$STACK_NAME" \
-              --parameter-overrides $PARAMS \
-              --region "$REGION" \
-              $TAGS \
-              --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
-          done
+      - name: Deploy CloudFormation Stack
+        uses: aws-actions/aws-cloudformation-github-actions@v1
+        with:
+          name: ${{ steps.set_file_names.outputs.STACK_NAME }}
+          template: ECR/templates/${{ steps.set_file_names.outputs.TEMPLATE_FILE }}
+          parameters: ${{ steps.set_file_names.outputs.PARAMETER_FILE }}
+          deployment-action: create-update-delete
+          aws-region: ap-south-1
