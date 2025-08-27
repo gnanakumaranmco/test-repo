@@ -8,8 +8,8 @@ stacks:
   ap-south-1:
     uai3031404-dev-ds-nonprd-ecr:
       template: ecr.yml
-    1:
-      template: 1.yml
-    2:
-      template: 2.yml
+    test1:
+      template: test1.yml
+    test2:
+      template: test2.yml
       ####np
