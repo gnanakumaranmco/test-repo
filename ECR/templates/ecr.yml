@@ -32,7 +32,7 @@ Resources:
   ECR:
     Type: AWS::ECR::Repository
     Properties:
-      RepositoryName: !Sub "${UAI}-${AppName}-${Env}/${RepoName}"
+      RepositoryName: !Sub "${UAI}-${AppName}-${Env}/${RepoName}-1"
       RepositoryPolicyText: 
         Version: "2012-10-17"
         Statement: 
