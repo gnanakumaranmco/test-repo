@@ -7,7 +7,6 @@ on:
 
 jobs:
   deploy:
-    # Run only if PR was merged into main
     if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main'
     runs-on: ubuntu-latest
 
@@ -18,7 +17,7 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.2' # StackMaster works with Ruby 2.7+ but 3.x is fine
+          ruby-version: '3.2'
 
       - name: Install StackMaster
         run: gem install stack_master
@@ -30,10 +29,11 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-      - name: Deploy stacks with StackMaster
-        working-directory: ./ECR
-        env:
-          AWS_DEFAULT_REGION: ap-south-1
+      - name: Find and deploy stacks
         run: |
-          stack_master validate
-          stack_master apply --yes
+          for dir in */; do
+            if [ -f "$dir/stack_master.yml" ]; then
+              echo "🚀 Deploying stack in $dir"
+              (cd "$dir" && stack_master validate && stack_master apply --yes)
+            fi
+          done
