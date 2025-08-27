@@ -1,0 +1,14 @@
+stack_defaults: 
+  tags: 
+    appname: ds
+    uai: uai3031404
+    env: dev
+
+stacks:
+  ap-south-1:
+    tests31:
+      template: tests31.yml
+    tests32:
+      template: tests32.yml
+
+      ####np

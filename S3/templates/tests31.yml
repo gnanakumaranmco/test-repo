@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS CloudFormation to create ECR.
+  
+Parameters:
+  AppName:
+    Type: String
+    MaxLength: 25
+    MinLength: 2
+    Description: Name of the application, keep to 15 characters or less
+  UAI:
+    Type: String
+    Description: The UAI of the application being managed.
+    ConstraintDescription: The UAI must be valid, but specified as 'uai' followed by 7 digits.
+    AllowedPattern: '^uai[0-9]*$'
+    MinLength: 10
+    MaxLength: 10
+  Env:
+    Type: String
+    Description: Env instance of the resource.
+    AllowedValues:
+    - dev
+    - qa
+    - stg
+    - prd
+  RepoName:
+    Type: String
+    MaxLength: 10
+    MinLength: 3
+    Description: "Name of the repo, which gives you unique name if you required multiple repos for same application: such as uaivalue/appname/AppInstance/env"
+
+Resources:
+  ECR:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${UAI}-${AppName}-${Env}/${RepoName}-1"
+      RepositoryPolicyText: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Sid: AllowPushPull
+            Effect: Allow
+            Principal: "*"
+            Action: 
+              - "ecr:GetDownloadUrlForLayer"
+              - "ecr:BatchGetImage"
+              - "ecr:BatchCheckLayerAvailability"
+              - "ecr:PutImage"
+              - "ecr:InitiateLayerUpload"
+              - "ecr:UploadLayerPart"
+              - "ecr:CompleteLayerUpload"      
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 5,
+                "description": "Expire untagged images older than 30 days",
+                "selection": {
+                      "countType": "sinceImagePushed",
+                      "countUnit": "days",
+                      "countNumber": 20,
+                      "tagStatus": "untagged"
+                },
+                "action": {
+                  "type": "expire"
+                }
+              },
+              {
+                "rulePriority": 10,
+                "description": "expire images count more than 3 units",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 3
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
+      Tags: 
+        - Key: uai
+          Value: !Ref UAI
+        - Key: app
+          Value: !Ref AppName
+        - Key: repo
+          Value: !Ref RepoName
+        - Key: env
+          Value: !Ref Env
+
+Outputs:
+  Repositoryname:
+    Value: !Ref ECR
+  RepositoryArn:
+    Value: !GetAtt ECR.Arn
