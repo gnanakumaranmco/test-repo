@@ -1,14 +1,14 @@
 name: Deploy CloudFormation with StackMaster
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
+    types:
+      - closed   # triggers when PR is closed
 
 jobs:
   deploy:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Run only if PR was merged into main
+    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main'
     runs-on: ubuntu-latest
 
     steps:
@@ -21,8 +21,7 @@ jobs:
           ruby-version: '3.2' # StackMaster works with Ruby 2.7+ but 3.x is fine
 
       - name: Install StackMaster
-        run: |
-          gem install stack_master
+        run: gem install stack_master
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -33,9 +32,8 @@ jobs:
 
       - name: Deploy stacks with StackMaster
         working-directory: ./ECR
+        env:
+          AWS_DEFAULT_REGION: ap-south-1
         run: |
-          # validate before apply (optional)
           stack_master validate
-          
-          # apply the stack (uses stack_master.yml, parameters, templates)
           stack_master apply --yes
