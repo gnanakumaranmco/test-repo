@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # needed so we can diff with previous commit
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
@@ -29,11 +31,19 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-      - name: Find and deploy stacks
+      - name: Deploy only changed service folders
         run: |
-          for dir in */; do
+          # Find changed files in this merge commit
+          changed_folders=$(git diff --name-only HEAD^ HEAD | cut -d/ -f1 | sort -u)
+
+          echo "Changed top-level folders:"
+          echo "$changed_folders"
+
+          for dir in $changed_folders; do
             if [ -f "$dir/stack_master.yml" ]; then
               echo "🚀 Deploying stack in $dir"
               (cd "$dir" && stack_master validate && stack_master apply --yes)
+            else
+              echo "⚠️ Skipping $dir (no stack_master.yml)"
             fi
           done
