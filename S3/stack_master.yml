@@ -11,4 +11,3 @@ stacks:
     tests32:
       template: tests32.yml
 
-      ####np
