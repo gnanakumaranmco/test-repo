@@ -1,44 +1,40 @@
-name: Deploy CloudFormation Stack
+name: Deploy CloudFormation with StackMaster
 
 on:
-  push:
-    branches:
-      - main
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
-  deploy-cloudformation:
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+  deploy:
+    runs-on: ubuntu-latest
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Install yq
-        run: sudo snap install yq
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2' # StackMaster works with Ruby 2.7+ but 3.x is fine
 
-      - name: Set Stack and Parameter File Names
-        id: set_file_names
-        run: |
-          PARAMETER_FILE=$(find ECR/parameters -name "*-nonprd-ecr.yml" -type f)
-          STACK_NAME=$(basename "$PARAMETER_FILE" .yml)
-          TEMPLATE_FILE=$(yq e '.stacks."ap-south-1".* | .template' ECR/stack_master.yml)
-          
-          echo "PARAMETER_FILE=$PARAMETER_FILE" >> $GITHUB_OUTPUT
-          echo "STACK_NAME=$STACK_NAME" >> $GITHUB_OUTPUT
-          echo "TEMPLATE_FILE=$TEMPLATE_FILE" >> $GITHUB_OUTPUT
+      - name: Install StackMaster
+        run: |
+          gem install stack_master
 
-      - name: Deploy CloudFormation Stack
-        uses: aws-actions/aws-cloudformation-github-deploy@v1
-        with:
-          name: ${{ steps.set_file_names.outputs.STACK_NAME }}
-          template: ECR/templates/${{ steps.set_file_names.outputs.TEMPLATE_FILE }}
-          parameters: ${{ steps.set_file_names.outputs.PARAMETER_FILE }}
-          capabilities: CAPABILITY_NAMED_IAM
-          region: ap-south-1
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Deploy stacks with StackMaster
+        working-directory: ./ECR
+        run: |
+          # validate before apply (optional)
+          stack_master validate
+          
+          # apply the stack (uses stack_master.yml, parameters, templates)
+          stack_master apply --yes
