@@ -5,7 +5,7 @@ stack_defaults:
     env: dev
 
 stacks:
-  us-east-1:
+  ap-south-1:
     uai3031404-dev-ds-nonprd-ecr:
       template: ecr.yml
       ####np
